@@ -1,0 +1,71 @@
+---
+- name: Install python3 and Docker
+  hosts: ec2_instance
+  become: yes
+  tasks:
+    - name: Install python3 and Docker
+      vars:
+        ansible_python_interpreter: /usr/bin/python2.7
+      ansible.builtin.yum:
+        name:
+          - python3
+          - docker
+          - python-pip
+        state: present
+        update_cache: yes
+
+- name: Install python using pip
+  hosts: ec2_instance
+  become: yes
+  tasks:
+    - name: Install python using pip
+      pip:
+        name:
+          - docker
+          - LooseVersion
+          - docker-py
+          - docker-compose
+        state: present
+    - name: Install pip3
+      command: python3 -m pip install --upgrade pip
+
+- name: Install Docker compose
+  hosts: ec2_instance
+  become: yes
+  tasks:
+    - name: Install Docker compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/1.29.2/docker-compose-{{lookup('pipe', 'uname -s')}}-{{lookup('pipe', 'uname -m')}}
+        dest: /usr/local/bin/docker-compose
+        mode: +x
+
+- name: Start Docker service
+  hosts: ec2_instance
+  become: yes
+  tasks:
+    - name: Start Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+    - name: add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+    - name: Reconnect to server session
+      meta: reset_connection
+
+- name: Start docker container
+  hosts: ec2_instance
+  vars_files:
+    - variables
+  tasks:
+    - name: Copy docker-compose.yml file
+      copy:
+        src: /home/mubarak/Ansible/container_files/docker-compose.yaml
+        dest: /home/ec2-user/docker-compose.yaml
+    - name: Docker login
+      command: docker login -u {{docker_username}} -p {{docker_password}}
+    - name: Start docker container
+      command: docker-compose -f /home/ec2-user/docker-compose.yaml up -d

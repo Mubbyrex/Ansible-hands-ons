@@ -1,0 +1,45 @@
+---
+- name: Nodejs app deployment
+  hosts: linode
+  tasks:
+    - name: install nodejs and npm
+      apt:
+        pkg:
+          - nodejs
+          - npm
+
+- name: Create new user for Nodejs
+  hosts: linode
+  vars_files:
+    - variables
+  tasks:
+    - name: Create new user
+      user:
+        name: "{{linux_user}}"
+        comment: Nodejs user
+        group: sudo
+
+- name: Deploy Nodejs App
+  hosts: linode
+  become: True
+  vars_files:
+    - variables
+  become_user: "{{linux_user}}"
+  tasks:
+    - name: Extract Nodejs file
+      unarchive:
+        src: "{{location}}/Ansible/nodejs-app-{{version}}.tgz"
+        dest: "{{location}}"
+    - name: Install Node dependencies
+      community.general.npm:
+        path: "{{location}}/package"
+    - name: Start Nodejs app
+      command:
+        chdir: "{{location}}/package/app"
+        cmd: node server
+      async: 1000
+      poll: 0
+    - name: Ensure app is running
+      shell: ps aux | grep node
+      register: app_status
+    - debug: msg={{ app_status.stdout_lines}}

@@ -1,0 +1,101 @@
+---
+- name: Install java and net-tools
+  hosts: linode
+  tasks:
+    - name: Apt Update
+      become: true
+      apt:
+        update_cache: yes
+    - name: Install java and net-tools
+      apt:
+        name: openjdk-8-jre
+        state: present
+      apt:
+        name: net-tools
+        state: present
+
+
+- name: Install Nexus
+  hosts: linode
+  tasks:
+    - name: Checking if Nexus folder exist
+      stat:
+        path: /opt/nexus
+      register: nexus_folder
+    - name: Download Nexus
+      get_url:
+        url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+        dest: /opt/
+      register: nexus_download
+      when: nexus_folder.stat.exists == False
+    - name: Extract Nexus
+      unarchive:
+        src: "{{ nexus_download.dest }}"
+        dest: /opt/
+        remote_src: yes
+      when: nexus_folder.stat.exists == False
+    - name: Find Nexus file
+      find:
+        paths: /opt/
+        patterns: nexus-3*
+        file_type: directory
+      register: nexus_file
+    - name: Rename Nexus file
+      command: mv {{ nexus_file.files[0].path }} /opt/nexus
+      when: nexus_folder.stat.exists == False
+
+- name: Create Nexus User and Group
+  hosts: linode
+  tasks:
+    - name: Create Nexus Group
+      group:
+        name: nexus
+        state: present
+    - name: Create Nexus User
+      user:
+        name: nexus
+        group: nexus
+        state: present
+    - name: Change Nexus folder owner
+      file:
+        path: /opt/nexus
+        owner: nexus
+        group: nexus
+        state: directory
+        recurse: yes
+    - name: Change Sonatype folder owner
+      file:
+        path: /opt/sonatype-work
+        owner: nexus
+        group: nexus
+        state: directory
+        recurse: yes
+
+- name: Start Nexus with nexus user
+  hosts: linode
+  become: yes
+  become_user: nexus
+  tasks:
+    - name: Set run_as_user nexus
+      blockinfile:
+        path: /opt/nexus/bin/nexus.rc
+        block: |
+          run_as_user="nexus"
+    - name: start Nexus
+      command: /opt/nexus/bin/nexus start
+
+
+- name: Verify Nexis is running
+  hosts: linode
+  tasks:
+    - name: Ensure Nexus is running
+      shell: ps aux | grep nexus
+      register: nexus_status
+    - debug: msg={{ nexus_status.stdout_lines}}
+    - name: Wait for Nexus to start
+      pause:
+        minutes: 1
+    - name: checking using nestat
+      shell: netstat -plnt
+      register: netstat_status
+    - debug: msg={{ netstat_status.stdout_lines}}
